@@ -111,9 +111,10 @@ func newSession(config SessionConfig) (*Session, error) {
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	go func() {
 		for msg := range session.rpcQueue {
+			scopedLogger.Trace().Interface("msg", msg).Msg("Processing RPC message")
 			start := time.Now()
 			onRPCMessage(msg, session)
-			scopedLogger.Info().Dur("duration", time.Since(start)).Interface("msg", msg).Msg("RPC message processed")
+			scopedLogger.Trace().Dur("duration", time.Since(start)).Interface("msg", msg).Msg("RPC message processed")
 		}
 	}()
 
@@ -123,8 +124,15 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
+				l := scopedLogger.With().Interface("msg", msg).Logger()
+				// just in case the channel is closed, we don't want to panic
+				defer func() {
+					if r := recover(); r != nil {
+						l.Warn().Interface("reason", r).Msg("RPC channel is closed, no need to enqueue message")
+					}
+				}()
 				// Enqueue to ensure ordered processing
-				scopedLogger.Info().Interface("msg", msg).Msg("Enqueuing RPC message")
+				l.Trace().Msg("Enqueuing RPC message")
 				session.rpcQueue <- msg
 			})
 			triggerOTAStateUpdate()
@@ -191,11 +199,13 @@ func newSession(config SessionConfig) (*Session, error) {
 				}
 			}
 		}
+
 		//state changes on closing browser tab disconnected->failed, we need to manually close it
 		if connectionState == webrtc.ICEConnectionStateFailed {
 			scopedLogger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
 			_ = peerConnection.Close()
 		}
+
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
