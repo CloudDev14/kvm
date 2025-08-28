@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -110,7 +111,9 @@ func newSession(config SessionConfig) (*Session, error) {
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	go func() {
 		for msg := range session.rpcQueue {
+			start := time.Now()
 			onRPCMessage(msg, session)
+			scopedLogger.Info().Dur("duration", time.Since(start)).Interface("msg", msg).Msg("RPC message processed")
 		}
 	}()
 
@@ -121,6 +124,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
 				// Enqueue to ensure ordered processing
+				scopedLogger.Info().Interface("msg", msg).Msg("Enqueuing RPC message")
 				session.rpcQueue <- msg
 			})
 			triggerOTAStateUpdate()
