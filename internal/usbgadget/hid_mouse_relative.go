@@ -11,10 +11,9 @@ var relativeMouseConfig = gadgetConfigItem{
 	path:       []string{"functions", "hid.usb2"},
 	configPath: []string{"hid.usb2"},
 	attrs: gadgetAttributes{
-		"protocol":        "2",
-		"subclass":        "1",
-		"report_length":   "4",
-		"no_out_endpoint": "1",
+		"protocol":      "2",
+		"subclass":      "1",
+		"report_length": "4",
 	},
 	reportDesc: relativeMouseCombinedReportDesc,
 }

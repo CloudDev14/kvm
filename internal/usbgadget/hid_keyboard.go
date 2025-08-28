@@ -14,10 +14,9 @@ var keyboardConfig = gadgetConfigItem{
 	path:       []string{"functions", "hid.usb0"},
 	configPath: []string{"hid.usb0"},
 	attrs: gadgetAttributes{
-		"protocol":        "1",
-		"subclass":        "1",
-		"report_length":   "8",
-		"no_out_endpoint": "0",
+		"protocol":      "1",
+		"subclass":      "1",
+		"report_length": "8",
 	},
 	reportDesc: keyboardReportDesc,
 }
