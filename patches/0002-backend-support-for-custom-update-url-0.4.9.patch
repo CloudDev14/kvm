@@ -1,0 +1,293 @@
+From: Custom Patches <patches@local>
+Date: Tue, 11 Nov 2025 11:55:17 -0600
+Subject: [PATCH] Add backend support for configurable update URL (0.4.9)
+
+- Modify fetchUpdateMetadata to use config.UpdateMetadataURL
+- Add RPC functions to get/set update metadata URL
+- Register new RPC endpoints
+
+Updated for release/0.4.9 compatibility.
+
+---
+diff --git a/jsonrpc.go b/jsonrpc.go
+index 99e7bdc..b61a271 100644
+--- a/jsonrpc.go
++++ b/jsonrpc.go
+@@ -173,36 +173,12 @@ func rpcGetDeviceID() (string, error) {
+ }
+ 
+ func rpcReboot(force bool) error {
+-	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
+-
+-	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
+-
+-	args := []string{}
+-	if force {
+-		args = append(args, "-f")
+-	}
+-
+-	cmd := exec.Command("reboot", args...)
+-	err := cmd.Start()
+-	if err != nil {
+-		logger.Error().Err(err).Msg("failed to reboot")
+-		switchToMainScreen()
+-		return fmt.Errorf("failed to reboot: %w", err)
+-	}
+-
+-	// If the reboot command is successful, exit the program after 5 seconds
+-	go func() {
+-		time.Sleep(5 * time.Second)
+-		os.Exit(0)
+-	}()
+-
+-	return nil
++	logger.Info().Msg("Got reboot request via RPC")
++	return hwReboot(force, nil, 0)
+ }
+ 
+-var streamFactor = 1.0
+-
+ func rpcGetStreamQualityFactor() (float64, error) {
+-	return streamFactor, nil
++	return config.VideoQualityFactor, nil
+ }
+ 
+ func rpcSetStreamQualityFactor(factor float64) error {
+@@ -212,7 +188,10 @@ func rpcSetStreamQualityFactor(factor float64) error {
+ 		return err
+ 	}
+ 
+-	streamFactor = factor
++	config.VideoQualityFactor = factor
++	if err := SaveConfig(); err != nil {
++		return fmt.Errorf("failed to save config: %w", err)
++	}
+ 	return nil
+ }
+ 
+@@ -228,6 +207,18 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
+ 	return enabled, nil
+ }
+ 
++func rpcGetUpdateMetadataURL() (string, error) {
++	return config.UpdateMetadataURL, nil
++}
++
++func rpcSetUpdateMetadataURL(url string) error {
++	config.UpdateMetadataURL = url
++	if err := SaveConfig(); err != nil {
++		return fmt.Errorf("failed to save config: %w", err)
++	}
++	return nil
++}
++
+ func rpcGetEDID() (string, error) {
+ 	resp, err := nativeInstance.VideoGetEDID()
+ 	if err != nil {
+@@ -719,7 +710,8 @@ func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
+ }
+ 
+ func rpcResetConfig() error {
+-	config = defaultConfig
++	defaultConfig := getDefaultConfig()
++	config = &defaultConfig
+ 	if err := SaveConfig(); err != nil {
+ 		return fmt.Errorf("failed to reset config: %w", err)
+ 	}
+@@ -1211,6 +1203,8 @@ var rpcHandlers = map[string]RPCHandler{
+ 	"setStreamQualityFactor": {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},
+ 	"getAutoUpdateState":     {Func: rpcGetAutoUpdateState},
+ 	"setAutoUpdateState":     {Func: rpcSetAutoUpdateState, Params: []string{"enabled"}},
++	"getUpdateMetadataURL":   {Func: rpcGetUpdateMetadataURL},
++	"setUpdateMetadataURL":   {Func: rpcSetUpdateMetadataURL, Params: []string{"url"}},
+ 	"getEDID":                {Func: rpcGetEDID},
+ 	"setEDID":                {Func: rpcSetEDID, Params: []string{"edid"}},
+ 	"getVideoLogStatus":      {Func: rpcGetVideoLogStatus},
+diff --git a/ota.go b/ota.go
+index bf0828d..029dae5 100644
+--- a/ota.go
++++ b/ota.go
+@@ -76,7 +76,13 @@ func GetLocalVersion() (systemVersion *semver.Version, appVersion *semver.Versio
+ func fetchUpdateMetadata(ctx context.Context, deviceId string, includePreRelease bool) (*UpdateMetadata, error) {
+ 	metadata := &UpdateMetadata{}
+ 
+-	updateUrl, err := url.Parse(UpdateMetadataUrl)
++	// Use configured URL or fall back to default
++	metadataURL := config.UpdateMetadataURL
++	if metadataURL == "" {
++		metadataURL = UpdateMetadataUrl
++	}
++
++	updateUrl, err := url.Parse(metadataURL)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("error parsing update metadata URL: %w", err)
+ 	}
+@@ -176,7 +182,7 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
+ 		if nr > 0 {
+ 			nw, ew := file.Write(buf[0:nr])
+ 			if nw < nr {
+-				return fmt.Errorf("short write: %d < %d", nw, nr)
++				return fmt.Errorf("short file write: %d < %d", nw, nr)
+ 			}
+ 			written += int64(nw)
+ 			if ew != nil {
+@@ -240,7 +246,7 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32, scope
+ 		if nr > 0 {
+ 			nw, ew := hash.Write(buf[0:nr])
+ 			if nw < nr {
+-				return fmt.Errorf("short write: %d < %d", nw, nr)
++				return fmt.Errorf("short hash write: %d < %d", nw, nr)
+ 			}
+ 			verified += int64(nw)
+ 			if ew != nil {
+@@ -260,11 +266,16 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32, scope
+ 		}
+ 	}
+ 
+-	hashSum := hash.Sum(nil)
+-	scopedLogger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
++	// close the file so we can rename below
++	if err := fileToHash.Close(); err != nil {
++		return fmt.Errorf("error closing file: %w", err)
++	}
++
++	hashSum := hex.EncodeToString(hash.Sum(nil))
++	scopedLogger.Info().Str("path", path).Str("hash", hashSum).Msg("SHA256 hash of")
+ 
+-	if hex.EncodeToString(hashSum) != expectedHash {
+-		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)
++	if hashSum != expectedHash {
++		return fmt.Errorf("hash mismatch: %s != %s", hashSum, expectedHash)
+ 	}
+ 
+ 	if err := os.Rename(unverifiedPath, path); err != nil {
+@@ -313,7 +324,7 @@ func triggerOTAStateUpdate() {
+ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) error {
+ 	scopedLogger := otaLogger.With().
+ 		Str("deviceId", deviceId).
+-		Str("includePreRelease", fmt.Sprintf("%v", includePreRelease)).
++		Bool("includePreRelease", includePreRelease).
+ 		Logger()
+ 
+ 	scopedLogger.Info().Msg("Trying to update...")
+@@ -362,8 +373,9 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
+ 			otaState.Error = fmt.Sprintf("Error downloading app update: %v", err)
+ 			scopedLogger.Error().Err(err).Msg("Error downloading app update")
+ 			triggerOTAStateUpdate()
+-			return err
++			return fmt.Errorf("error downloading app update: %w", err)
+ 		}
++
+ 		downloadFinished := time.Now()
+ 		otaState.AppDownloadFinishedAt = &downloadFinished
+ 		otaState.AppDownloadProgress = 1
+@@ -379,17 +391,21 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
+ 			otaState.Error = fmt.Sprintf("Error verifying app update hash: %v", err)
+ 			scopedLogger.Error().Err(err).Msg("Error verifying app update hash")
+ 			triggerOTAStateUpdate()
+-			return err
++			return fmt.Errorf("error verifying app update: %w", err)
+ 		}
++
+ 		verifyFinished := time.Now()
+ 		otaState.AppVerifiedAt = &verifyFinished
+ 		otaState.AppVerificationProgress = 1
++		triggerOTAStateUpdate()
++
+ 		otaState.AppUpdatedAt = &verifyFinished
+ 		otaState.AppUpdateProgress = 1
+ 		triggerOTAStateUpdate()
+ 
+ 		scopedLogger.Info().Msg("App update downloaded")
+ 		rebootNeeded = true
++		triggerOTAStateUpdate()
+ 	} else {
+ 		scopedLogger.Info().Msg("App is up to date")
+ 	}
+@@ -405,8 +421,9 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
+ 			otaState.Error = fmt.Sprintf("Error downloading system update: %v", err)
+ 			scopedLogger.Error().Err(err).Msg("Error downloading system update")
+ 			triggerOTAStateUpdate()
+-			return err
++			return fmt.Errorf("error downloading system update: %w", err)
+ 		}
++
+ 		downloadFinished := time.Now()
+ 		otaState.SystemDownloadFinishedAt = &downloadFinished
+ 		otaState.SystemDownloadProgress = 1
+@@ -422,8 +439,9 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
+ 			otaState.Error = fmt.Sprintf("Error verifying system update hash: %v", err)
+ 			scopedLogger.Error().Err(err).Msg("Error verifying system update hash")
+ 			triggerOTAStateUpdate()
+-			return err
++			return fmt.Errorf("error verifying system update: %w", err)
+ 		}
++
+ 		scopedLogger.Info().Msg("System update downloaded")
+ 		verifyFinished := time.Now()
+ 		otaState.SystemVerifiedAt = &verifyFinished
+@@ -439,8 +457,10 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
+ 		if err != nil {
+ 			otaState.Error = fmt.Sprintf("Error starting rk_ota command: %v", err)
+ 			scopedLogger.Error().Err(err).Msg("Error starting rk_ota command")
++			triggerOTAStateUpdate()
+ 			return fmt.Errorf("error starting rk_ota command: %w", err)
+ 		}
++
+ 		ctx, cancel := context.WithCancel(context.Background())
+ 		defer cancel()
+ 
+@@ -475,28 +495,42 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
+ 				Str("output", output).
+ 				Int("exitCode", cmd.ProcessState.ExitCode()).
+ 				Msg("Error executing rk_ota command")
++			triggerOTAStateUpdate()
+ 			return fmt.Errorf("error executing rk_ota command: %w\nOutput: %s", err, output)
+ 		}
++
+ 		scopedLogger.Info().Str("output", output).Msg("rk_ota success")
+ 		otaState.SystemUpdateProgress = 1
+ 		otaState.SystemUpdatedAt = &verifyFinished
+-		triggerOTAStateUpdate()
+ 		rebootNeeded = true
++		triggerOTAStateUpdate()
+ 	} else {
+ 		scopedLogger.Info().Msg("System is up to date")
+ 	}
+ 
+ 	if rebootNeeded {
+-		scopedLogger.Info().Msg("System Rebooting in 10s")
+-		time.Sleep(10 * time.Second)
+-		cmd := exec.Command("reboot")
+-		err := cmd.Start()
+-		if err != nil {
+-			otaState.Error = fmt.Sprintf("Failed to start reboot: %v", err)
+-			scopedLogger.Error().Err(err).Msg("Failed to start reboot")
+-			return fmt.Errorf("failed to start reboot: %w", err)
+-		} else {
+-			os.Exit(0)
++		scopedLogger.Info().Msg("System Rebooting due to OTA update")
++
++		// Build redirect URL with conditional query parameters
++		redirectTo := "/settings/general/update"
++		queryParams := url.Values{}
++		if systemUpdateAvailable {
++			queryParams.Set("systemVersion", remote.SystemVersion)
++		}
++		if appUpdateAvailable {
++			queryParams.Set("appVersion", remote.AppVersion)
++		}
++		if len(queryParams) > 0 {
++			redirectTo += "?" + queryParams.Encode()
++		}
++
++		postRebootAction := &PostRebootAction{
++			HealthCheck: "/device/status",
++			RedirectTo:  redirectTo,
++		}
++
++		if err := hwReboot(true, postRebootAction, 10*time.Second); err != nil {
++			return fmt.Errorf("error requesting reboot: %w", err)
+ 		}
+ 	}
+ 
