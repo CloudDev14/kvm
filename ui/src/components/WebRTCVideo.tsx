@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
-import VirtualKeyboard from "@components/VirtualKeyboard";
-import Actionbar from "@components/ActionBar";
-import MacroBar from "@/components/MacroBar";
-import InfoBar from "@components/InfoBar";
-import notifications from "@/notifications";
-import useKeyboard from "@/hooks/useKeyboard";
 import { cx } from "@/cva.config";
-import { keys } from "@/keyboardMappings";
+import useKeyboard from "@hooks/useKeyboard";
+import useMouse from "@hooks/useMouse";
 import {
   useRTCStore,
   useSettingsStore,
   useVideoStore,
-} from "@/hooks/stores";
-import useMouse from "@/hooks/useMouse";
-
+} from "@hooks/stores";
+import VirtualKeyboard from "@components/VirtualKeyboard";
+import Actionbar from "@components/ActionBar";
+import MacroBar from "@components/MacroBar";
+import InfoBar from "@components/InfoBar";
 import {
   HDMIErrorOverlay,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
-} from "./VideoOverlay";
+} from "@components/VideoOverlay";
+import HoloLogo from "@/assets/holo_logo_white.png";
+import { keys } from "@/keyboardMappings";
+import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
-export default function WebRTCVideo() {
+export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const { mediaStream, peerConnectionState } = useRTCStore();
@@ -168,10 +169,10 @@ export default function WebRTCVideo() {
 
     const handlePointerLockChange = () => {
       if (document.pointerLockElement) {
-        notifications.success("Pointer lock Enabled, press escape to unlock");
+        notifications.success(m.video_pointer_lock_enabled());
         setIsPointerLockActive(true);
       } else {
-        notifications.success("Pointer lock Disabled");
+        notifications.success(m.video_pointer_lock_disabled());
         setIsPointerLockActive(false);
       }
     };
@@ -233,6 +234,18 @@ export default function WebRTCVideo() {
     () => getMouseWheelHandler(),
     [getMouseWheelHandler],
   );
+
+  function getAdjustedKeyCode(e: KeyboardEvent) {
+    const key = e.key;
+    let code = e.code;
+
+    if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
+      code = "Backquote";
+    } else if (code == "Backquote" && ["§", "±"].includes(key)) {
+      code = "IntlBackslash";
+    }
+    return code;
+  }
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
@@ -468,21 +481,10 @@ export default function WebRTCVideo() {
       };
   }, [videoSaturation, videoBrightness, videoContrast]);
 
-  function getAdjustedKeyCode(e: KeyboardEvent) {
-    const key = e.key;
-    let code = e.code;
-
-    if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
-      code = "Backquote";
-    } else if (code == "Backquote" && ["§", "±"].includes(key)) {
-      code = "IntlBackslash";
-    }
-    return code;
-  }
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      <div className="flex min-h-[39.5px] flex-col">
+      <div className="hidden flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
           <fieldset
             disabled={peerConnection?.connectionState !== "connected"}
@@ -510,7 +512,7 @@ export default function WebRTCVideo() {
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                  <div className="relative flex items-center justify-center overflow-hidden">
                     <div className="relative flex h-full w-full items-center justify-center">
                       <video
                         ref={videoElm}
@@ -527,9 +529,10 @@ export default function WebRTCVideo() {
                           "max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
                           {
                             "cursor-none": settings.isCursorHidden,
-                            "opacity-0":
+                            "!opacity-0":
                               isVideoLoading ||
                               hdmiError ||
+                              hasConnectionIssues ||
                               peerConnectionState !== "connected",
                             "opacity-60!": showPointerLockBar,
                             "animate-slideUpFade border border-slate-800/30 shadow-xs dark:border-slate-300/20":
@@ -537,7 +540,22 @@ export default function WebRTCVideo() {
                           },
                         )}
                       />
-                      {peerConnection?.connectionState == "connected" && (
+                      {/* Watermark logo - centered at bottom of video */}
+                      {isPlaying && !hdmiError && peerConnectionState === "connected" && (
+                        <img
+                          src={HoloLogo}
+                          alt="Holoscopia"
+                          className="absolute h-8 w-auto opacity-70 pointer-events-none z-20"
+                          style={{
+                            maxWidth: '80px',
+                            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+                            bottom: '10px',
+                            left: '50%',
+                            transform: 'translateX(-50%)'
+                          }}
+                        />
+                      )}
+                      {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
                           className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
@@ -563,7 +581,7 @@ export default function WebRTCVideo() {
           </div>
         </div>
       </div>
-      <div>
+      <div className="hidden">
         <InfoBar />
       </div>
     </div>

@@ -1,0 +1,8 @@
+# Ignorar parches temporales o de prueba
+*.patch.bak
+*.patch.orig
+*.patch.rej
+*~
+
+# Mantener los parches oficiales
+!000*.patch

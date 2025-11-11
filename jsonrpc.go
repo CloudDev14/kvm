@@ -173,36 +173,12 @@ func rpcGetDeviceID() (string, error) {
 }
 
 func rpcReboot(force bool) error {
-	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
-
-	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
-
-	args := []string{}
-	if force {
-		args = append(args, "-f")
-	}
-
-	cmd := exec.Command("reboot", args...)
-	err := cmd.Start()
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to reboot")
-		switchToMainScreen()
-		return fmt.Errorf("failed to reboot: %w", err)
-	}
-
-	// If the reboot command is successful, exit the program after 5 seconds
-	go func() {
-		time.Sleep(5 * time.Second)
-		os.Exit(0)
-	}()
-
-	return nil
+	logger.Info().Msg("Got reboot request via RPC")
+	return hwReboot(force, nil, 0)
 }
 
-var streamFactor = 1.0
-
 func rpcGetStreamQualityFactor() (float64, error) {
-	return streamFactor, nil
+	return config.VideoQualityFactor, nil
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
@@ -212,7 +188,10 @@ func rpcSetStreamQualityFactor(factor float64) error {
 		return err
 	}
 
-	streamFactor = factor
+	config.VideoQualityFactor = factor
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 	return nil
 }
 
@@ -731,7 +710,8 @@ func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
 }
 
 func rpcResetConfig() error {
-	config = defaultConfig
+	defaultConfig := getDefaultConfig()
+	config = &defaultConfig
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}

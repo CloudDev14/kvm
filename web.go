@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"path/filepath"
@@ -184,6 +185,8 @@ func setupRouter() *gin.Engine {
 		protected.PUT("/auth/password-local", handleUpdatePassword)
 		protected.DELETE("/auth/local-password", handleDeletePassword)
 		protected.POST("/storage/upload", handleUploadHttp)
+
+		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
 	}
 
 	// Catch-all route for SPA
@@ -341,7 +344,6 @@ func handleWebRTCSignalWsMessages(
 
 			l.Trace().Msg("sending ping frame")
 			err := wsCon.Ping(runCtx)
-
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("websocket ping error")
 				cancelRun()
@@ -725,6 +727,18 @@ func handleDeletePassword(c *gin.Context) {
 }
 
 func handleDeviceStatus(c *gin.Context) {
+	// Add CORS headers to allow cross-origin requests
+	// This is safe because device/status is a public endpoint
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight requests
+	if c.Request.Method == "OPTIONS" {
+		c.AbortWithStatus(http.StatusNoContent)
+		return
+	}
+
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
 	}
@@ -794,4 +808,24 @@ func handleSetup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
+}
+
+func handleSendWOLMagicPacket(c *gin.Context) {
+	inputMacAddr := c.Param("mac-addr")
+	macAddr, err := net.ParseMAC(inputMacAddr)
+	if err != nil {
+		logger.Warn().Err(err).Str("inputMacAddr", inputMacAddr).Msg("Invalid MAC address provided")
+		c.String(http.StatusBadRequest, "Invalid mac address provided")
+		return
+	}
+
+	macAddrString := macAddr.String()
+	err = rpcSendWOLMagicPacket(macAddrString)
+	if err != nil {
+		logger.Warn().Err(err).Str("macAddrString", macAddrString).Msg("Failed to send WOL magic packet")
+		c.String(http.StatusInternalServerError, "Failed to send WOL to %s: %v", macAddrString, err)
+		return
+	}
+
+	c.String(http.StatusOK, "WOL sent to %s ", macAddr)
 }
