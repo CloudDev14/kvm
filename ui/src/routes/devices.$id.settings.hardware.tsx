@@ -89,21 +89,6 @@ export default function SettingsHardwareRoute() {
     });
   };
 
-  const handlePowerSavingChange = (enabled: boolean) => {
-    setPowerSavingEnabled(enabled);
-    const duration = enabled ? 90 : -1;
-    send("setVideoSleepMode", { duration }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set power saving mode: ${resp.error.data || "Unknown error"}`,
-        );
-        setPowerSavingEnabled(!enabled); // Revert on error
-        return;
-      }
-      notifications.success(`Power saving mode ${enabled ? "enabled" : "disabled"}`);
-    });
-  };
-
   useEffect(() => {
     send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
