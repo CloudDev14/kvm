@@ -52,19 +52,29 @@ cd /home/clouddev10/Desarrollo/kvm
 ./patches/update-and-patch.sh release/0.4.9
 ```
 
+**¿Qué hace este script?**
+1. ✅ Verifica que tienes los parches
+2. 💾 Los copia a `/tmp` (para que no desaparezcan al cambiar branch)
+3. 🔄 Cambia a `release/0.4.9`
+4. 🔧 Aplica los parches desde `/tmp`
+5. 📊 Te muestra cuántos se aplicaron correctamente
+
 ### Opción B: Manual
 ```bash
-# 1. Guardar cambios
+# 1. Guardar parches en un lugar seguro
+cp -r patches /tmp/my-patches
+
+# 2. Guardar cambios
 git stash
 
-# 2. Actualizar
+# 3. Actualizar
 git fetch --tags
 git checkout release/0.4.9
 
-# 3. Aplicar parches
-./patches/apply-patches.sh
+# 4. Aplicar parches desde el backup
+git apply /tmp/my-patches/*.patch
 
-# 4. Compilar
+# 5. Compilar
 make build_dev
 ```
 

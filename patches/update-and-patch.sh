@@ -29,9 +29,29 @@ fi
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "📍 Branch actual: $CURRENT_BRANCH"
 
+# Verificar que existen los parches
+PATCH_COUNT=$(ls -1 "$SCRIPT_DIR"/*.patch 2>/dev/null | wc -l)
+if [ "$PATCH_COUNT" -eq 0 ]; then
+    echo "❌ Error: No se encontraron parches en $SCRIPT_DIR"
+    echo "   Asegúrate de estar en la rama correcta con los parches"
+    exit 1
+fi
+
+echo "📦 Encontrados $PATCH_COUNT parche(s) para aplicar"
+echo ""
+
+# IMPORTANTE: Copiar parches a un directorio temporal
+# porque al cambiar de branch desaparecerán
+TEMP_PATCHES_DIR=$(mktemp -d)
+echo "💾 Copiando parches a directorio temporal..."
+cp "$SCRIPT_DIR"/*.patch "$TEMP_PATCHES_DIR/" 2>/dev/null || true
+cp "$SCRIPT_DIR"/apply-patches.sh "$TEMP_PATCHES_DIR/" 2>/dev/null || true
+
+echo "   ✓ Parches guardados en: $TEMP_PATCHES_DIR"
+echo ""
+
 # Verificar si hay cambios sin commit
 if ! git diff-index --quiet HEAD --; then
-    echo ""
     echo "⚠️  Hay cambios sin commit"
     echo "   Opciones:"
     echo "   1. Hacer stash (guardar temporalmente)"
@@ -46,6 +66,7 @@ if ! git diff-index --quiet HEAD --; then
         STASHED=1
     else
         echo "❌ Cancelado. Haz commit o stash manualmente"
+        rm -rf "$TEMP_PATCHES_DIR"
         exit 1
     fi
 fi
@@ -60,6 +81,7 @@ if ! git rev-parse "$TARGET_VERSION" >/dev/null 2>&1; then
     echo "❌ Error: La versión $TARGET_VERSION no existe"
     echo "   Versiones disponibles:"
     git tag -l "release/*" | tail -5
+    rm -rf "$TEMP_PATCHES_DIR"
     exit 1
 fi
 
@@ -68,33 +90,42 @@ echo ""
 echo "🔀 Cambiando a $TARGET_VERSION..."
 git checkout "$TARGET_VERSION"
 
-# Aplicar parches
+# Aplicar parches desde el directorio temporal
 echo ""
-if [ -f "$SCRIPT_DIR/apply-patches.sh" ]; then
-    "$SCRIPT_DIR/apply-patches.sh"
-else
-    echo "⚠️  No se encontró apply-patches.sh"
-    echo "   Aplicando parches manualmente..."
-    
-    for patch in "$SCRIPT_DIR"/*.patch; do
-        if [ -f "$patch" ]; then
-            patch_name=$(basename "$patch")
-            echo "   Aplicando $patch_name..."
-            if git apply "$patch" 2>/dev/null; then
-                echo "   ✓ $patch_name aplicado"
+echo "🔧 Aplicando parches desde directorio temporal..."
+APPLIED=0
+FAILED=0
+
+for patch in "$TEMP_PATCHES_DIR"/*.patch; do
+    if [ -f "$patch" ]; then
+        patch_name=$(basename "$patch")
+        echo "   Aplicando $patch_name..."
+        
+        if git apply --check "$patch" 2>/dev/null; then
+            if git apply "$patch"; then
+                echo "   ✓ $patch_name aplicado exitosamente"
+                APPLIED=$((APPLIED + 1))
             else
                 echo "   ❌ Error aplicando $patch_name"
-                echo ""
-                echo "   Posibles conflictos. Aplicando con 3-way merge..."
-                if git apply --3way "$patch"; then
-                    echo "   ✓ Aplicado con merge (revisa conflictos)"
-                else
-                    echo "   ❌ No se pudo aplicar. Revisa manualmente"
-                fi
+                FAILED=$((FAILED + 1))
+            fi
+        else
+            echo "   ⚠️  Conflictos detectados, intentando merge de 3 vías..."
+            if git apply --3way "$patch"; then
+                echo "   ✓ $patch_name aplicado con merge (revisa conflictos)"
+                APPLIED=$((APPLIED + 1))
+            else
+                echo "   ❌ No se pudo aplicar $patch_name"
+                FAILED=$((FAILED + 1))
             fi
         fi
-    done
-fi
+    fi
+done
+
+# Limpiar directorio temporal
+echo ""
+echo "🧹 Limpiando archivos temporales..."
+rm -rf "$TEMP_PATCHES_DIR"
 
 # Restaurar stash si se hizo
 if [ "${STASHED:-0}" -eq 1 ]; then
@@ -113,16 +144,28 @@ echo "╔═══════════════════════�
 echo "║  ✓ Actualización Completada                   ║"
 echo "╚════════════════════════════════════════════════╝"
 echo ""
-echo "📊 Estado actual:"
+echo "📊 Resumen:"
 echo "   Versión: $TARGET_VERSION"
 echo "   Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "   Commit: $(git rev-parse --short HEAD)"
+echo "   Parches aplicados: $APPLIED"
+echo "   Parches fallidos: $FAILED"
 echo ""
+
+if [ $FAILED -gt 0 ]; then
+    echo "⚠️  Algunos parches no se pudieron aplicar"
+    echo "   Revisa los conflictos manualmente"
+    echo ""
+fi
+
 echo "💡 Próximos pasos:"
 echo "   1. Revisar cambios: git status"
-echo "   2. Resolver conflictos si los hay"
-echo "   3. Compilar: make build_dev"
-echo "   4. Probar el firmware"
+echo "   2. Ver diferencias: git diff"
+if [ $FAILED -gt 0 ]; then
+    echo "   3. Resolver conflictos si los hay"
+fi
+echo "   4. Compilar: make build_dev"
+echo "   5. Probar el firmware"
 echo ""
 echo "🔙 Para volver al estado anterior:"
 echo "   git checkout $CURRENT_BRANCH"

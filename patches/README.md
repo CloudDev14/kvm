@@ -38,7 +38,22 @@ git apply --check patches/*.patch
 
 ## 🔄 Actualizar el Firmware y Re-aplicar Parches
 
-### Opción 1: Actualización Manual
+### Opción 1: Usar el script automatizado (Recomendado)
+```bash
+./patches/update-and-patch.sh release/0.4.9
+```
+
+**¿Cómo funciona?**
+1. ✅ Verifica que existen los parches en tu rama actual
+2. 💾 **Copia los parches a un directorio temporal** (importante!)
+3. 🔄 Cambia a la versión objetivo (release/0.4.9)
+4. 🔧 Aplica los parches desde el directorio temporal
+5. 🧹 Limpia archivos temporales
+6. 📊 Muestra resumen de parches aplicados/fallidos
+
+**Nota**: El script copia los parches a `/tmp` antes de cambiar de branch, porque al cambiar de branch los archivos de parches desaparecerían.
+
+### Opción 2: Actualización Manual
 ```bash
 # 1. Guardar cambios actuales
 git stash
@@ -47,15 +62,10 @@ git stash
 git fetch origin
 git checkout release/0.4.9  # o la versión deseada
 
-# 3. Re-aplicar parches
-./patches/apply-patches.sh
+# 3. Re-aplicar parches manualmente
+git apply /ruta/a/parches/*.patch
 
 # 4. Si hay conflictos, resolverlos manualmente
-```
-
-### Opción 2: Usar el script automatizado
-```bash
-./patches/update-and-patch.sh release/0.4.9
 ```
 
 ## 📝 Crear Nuevos Parches
