@@ -19,6 +19,7 @@ import {
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
 } from "@components/VideoOverlay";
+import HoloLogo from "@/assets/holo_logo_white.png";
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -483,7 +484,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      <div className="flex min-h-[39.5px] flex-col">
+      <div className="hidden flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
           <fieldset
             disabled={peerConnection?.connectionState !== "connected"}
@@ -511,7 +512,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                  <div className="relative flex items-center justify-center overflow-hidden">
                     <div className="relative flex h-full w-full items-center justify-center">
                       <video
                         ref={videoElm}
@@ -539,6 +540,21 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                           },
                         )}
                       />
+                      {/* Watermark logo - centered at bottom of video */}
+                      {isPlaying && !hdmiError && peerConnectionState === "connected" && (
+                        <img
+                          src={HoloLogo}
+                          alt="Holoscopia"
+                          className="absolute h-8 w-auto opacity-70 pointer-events-none z-20"
+                          style={{
+                            maxWidth: '80px',
+                            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+                            bottom: '10px',
+                            left: '50%',
+                            transform: 'translateX(-50%)'
+                          }}
+                        />
+                      )}
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
@@ -565,7 +581,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
           </div>
         </div>
       </div>
-      <div>
+      <div className="hidden">
         <InfoBar />
       </div>
     </div>

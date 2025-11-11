@@ -86,6 +86,7 @@ type Config struct {
 	JigglerEnabled       bool                 `json:"jiggler_enabled"`
 	JigglerConfig        *JigglerConfig       `json:"jiggler_config"`
 	AutoUpdateEnabled    bool                 `json:"auto_update_enabled"`
+	UpdateMetadataURL    string               `json:"update_metadata_url"`
 	IncludePreRelease    bool                 `json:"include_pre_release"`
 	HashedPassword       string               `json:"hashed_password"`
 	LocalAuthToken       string               `json:"local_auth_token"`
@@ -158,7 +159,8 @@ func getDefaultConfig() Config {
 	return Config{
 		CloudURL:             "https://api.jetkvm.com",
 		CloudAppURL:          "https://app.jetkvm.com",
-		AutoUpdateEnabled:    true, // Set a default value
+		AutoUpdateEnabled:    false, // Set a default value
+		UpdateMetadataURL:    "https://api.jetkvm.com/releases",
 		ActiveExtension:      "",
 		KeyboardMacros:       []KeyboardMacro{},
 		DisplayRotation:      "270",

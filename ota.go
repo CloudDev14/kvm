@@ -76,7 +76,13 @@ func GetLocalVersion() (systemVersion *semver.Version, appVersion *semver.Versio
 func fetchUpdateMetadata(ctx context.Context, deviceId string, includePreRelease bool) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
-	updateUrl, err := url.Parse(UpdateMetadataUrl)
+	// Use configured URL or fall back to default
+	metadataURL := config.UpdateMetadataURL
+	if metadataURL == "" {
+		metadataURL = UpdateMetadataUrl
+	}
+
+	updateUrl, err := url.Parse(metadataURL)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing update metadata URL: %w", err)
 	}

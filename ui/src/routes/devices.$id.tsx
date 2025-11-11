@@ -859,14 +859,16 @@ export default function KvmIdRoute() {
         </FocusTrap>
 
         <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
-          <DashboardNavbar
-            primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
-            showConnectionStatus={true}
-            isLoggedIn={authMode === "password" || !!user}
-            userEmail={user?.email}
-            picture={user?.picture}
-            kvmName={deviceName ?? m.jetkvm_device()}
-          />
+          <div className="hidden">
+            <DashboardNavbar
+              primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
+              showConnectionStatus={true}
+              isLoggedIn={authMode === "password" || !!user}
+              userEmail={user?.email}
+              picture={user?.picture}
+              kvmName={deviceName ?? m.jetkvm_device()}
+            />
+          </div>
 
           <div className="relative flex h-full w-full overflow-hidden">
             <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
