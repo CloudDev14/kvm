@@ -228,6 +228,18 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
 	return enabled, nil
 }
 
+func rpcGetUpdateMetadataURL() (string, error) {
+	return config.UpdateMetadataURL, nil
+}
+
+func rpcSetUpdateMetadataURL(url string) error {
+	config.UpdateMetadataURL = url
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
 func rpcGetEDID() (string, error) {
 	resp, err := nativeInstance.VideoGetEDID()
 	if err != nil {
@@ -1211,6 +1223,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setStreamQualityFactor": {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},
 	"getAutoUpdateState":     {Func: rpcGetAutoUpdateState},
 	"setAutoUpdateState":     {Func: rpcSetAutoUpdateState, Params: []string{"enabled"}},
+	"getUpdateMetadataURL":   {Func: rpcGetUpdateMetadataURL},
+	"setUpdateMetadataURL":   {Func: rpcSetUpdateMetadataURL, Params: []string{"url"}},
 	"getEDID":                {Func: rpcGetEDID},
 	"setEDID":                {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getVideoLogStatus":      {Func: rpcGetVideoLogStatus},
