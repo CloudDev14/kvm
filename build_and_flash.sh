@@ -21,6 +21,7 @@
 #   --skip-binary         Saltar compilación del binario Go
 #   --skip-flash          Solo construir firmware, no flashear
 #   --device-ip IP        IP del dispositivo para verificación (default: 10.1.1.104)
+#   --version VERSION     Versión a compilar (default: dev con timestamp)
 #   --help                Mostrar esta ayuda
 #
 
@@ -40,6 +41,7 @@ SKIP_FLASH=false
 DEVICE_IP="10.1.1.104"
 KVM_DIR=""
 RV1106_DIR=""
+BUILD_VERSION=""
 
 # Función para detectar directorios automáticamente
 detect_directories() {
@@ -114,6 +116,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --device-ip)
             DEVICE_IP="$2"
+            shift 2
+            ;;
+        --version)
+            BUILD_VERSION="$2"
             shift 2
             ;;
         --help)
@@ -206,7 +212,18 @@ if [ "$SKIP_BINARY" = false ]; then
     CURRENT_STEP=$((CURRENT_STEP + 1))
     print_step "Paso $CURRENT_STEP/$TOTAL_STEPS: Compilando binario Go (jetkvm_app)..."
     cd "$KVM_DIR"
-    make build_dev
+    
+    if [ -n "$BUILD_VERSION" ]; then
+        # Compilar con versión específica
+        print_step "Compilando con versión: $BUILD_VERSION"
+        sed -i.bak "s/^VERSION := .*/VERSION := $BUILD_VERSION/" Makefile
+        make build_release
+        mv Makefile.bak Makefile
+    else
+        # Compilar con versión dev (default)
+        make build_dev
+    fi
+    
     if [ $? -ne 0 ]; then
         print_error "Falló la compilación del binario Go"
         exit 1

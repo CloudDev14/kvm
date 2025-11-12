@@ -1,0 +1,8 @@
+{
+  "appVersion": "0.5.1",
+  "appUrl": "https://bitbucket.org/cloudsourceit/releases/downloads/jetkvm_app_0.5.1",
+  "appHash": "bd054c2d00484306b2f244af89235ca289e9d2ba8229949d752ad262a5e4a76c",
+  "systemVersion": "0.2.7",
+  "systemUrl": "https://bitbucket.org/cloudsourceit/releases/downloads/update_system_0.2.7.tar",
+  "systemHash": "845b87ce26ab1826fb4bf1220608571ff6af6040b07b0a968c4f696639653b25"
+}
